@@ -1,95 +1,115 @@
-import java.io.*;
-import java.util.ArrayList;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 
 public class AccountManager {
-    private final String FILENAME = "students.txt";
-    private ArrayList<Student> students;
+    private Connection connection;
+
+    private static final String URL = "jdbc:mariadb://localhost:3306/student_system";
+    String user;
+    String password;
 
     public enum loginStates {
         USER_DOESNT_EXIST,
         INCORRECT_PASSWORD,
         SUCCESS
     }
-
     public AccountManager() {
-        students = new ArrayList<>();
+        loadEnv();
     }
 
-    public void loadAccounts() {
-        File file = new File(FILENAME);
-
-        if (!file.exists()) {
-            try {
-                file.createNewFile();
-            } catch (IOException e) { e.printStackTrace(); }
+    // Load Environment Variables and assign to DB_USER and DB_PASSWORD
+    private void loadEnv() {
+        try (BufferedReader br = new BufferedReader(new FileReader(".env"))) {
+            String line = br.readLine();
+            while (line != null) {
+                String[] parts = line.split("=");
+                System.out.println(parts[0] + "=" + parts[1]);
+                if (parts.length == 2) {
+                    System.setProperty(parts[0], parts[1]);
+                }
+                line = br.readLine();
+            }
+            user = System.getProperty("DB_USER");
+            password = System.getProperty("DB_PASSWORD");
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
-        try {
-            try (BufferedReader br = new BufferedReader(new FileReader(FILENAME))) {
-                String line = br.readLine();
-                
-                while (line != null) {
-                    String[] parts = line.split(",");
-                    
-                    String studentID = parts[0];
-                    String password = parts[1];
-                    
-                    Student student = new Student(studentID, password);
-                    students.add(student);
-
-                    line = br.readLine();
-                }
-            }
-        } catch (IOException e) { e.printStackTrace(); }
+        createConnection(user, password);
     }
 
-    public void saveAccounts() {
-        try (FileWriter fw = new FileWriter(FILENAME); BufferedWriter bw = new BufferedWriter(fw)) {
-            
-            for (Student sd : students) {
-                bw.write(sd.getStudentId() + "," + sd.getPassword());
-                bw.newLine();
-            }
-        } catch (IOException e) {
+    private void createConnection(String user, String password) {
+        try {
+            connection = DriverManager.getConnection(
+                URL,
+                user,
+                password
+            );
+
+            System.out.println("Connected!");
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
     
     public boolean register(String studentId, String password) {
-        if (accountExists(studentId)) {
-            return false;
+        String checkSql = "SELECT password FROM students WHERE student_id = ?";
+        String insertSql = "INSERT INTO students (student_id, password) VALUES(?, ?)";
+
+        
+        try {
+            PreparedStatement checkStmt = connection.prepareStatement(checkSql);
+            checkStmt.setString(1, studentId);
+
+            ResultSet rs = checkStmt.executeQuery();
+
+            if (rs.next()) {
+                return false;
+            }
+
+            PreparedStatement insertStmt = connection.prepareStatement(insertSql);
+            insertStmt.setString(1, studentId);
+            insertStmt.setString(2, password);
+
+            int rowsInserted = insertStmt.executeUpdate();
+
+            return rowsInserted > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
 
-        Student newStudent = new Student(studentId, password);
-
-        students.add(newStudent);
-        saveAccounts();
-
-        return true;
+        return false;
     }
 
     public loginStates login(String studentId, String password) {
-        if (!accountExists(studentId)) {
-            return loginStates.USER_DOESNT_EXIST;
-        }
+        String sql = "SELECT password FROM students WHERE student_id = ?";
         
-        for (Student sd : students) {
-            if (sd.getStudentId().equals(studentId)) {
-                if (sd.getPassword().equals(password)) {
+        try {
+            PreparedStatement ps = connection.prepareStatement(sql);
+            ps.setString(1, studentId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                return loginStates.USER_DOESNT_EXIST;
+                }
+
+                String dbPassword = rs.getString("password");
+
+                if (dbPassword.equals(password)) {
                     return loginStates.SUCCESS;
+                } else {
+                    return loginStates.INCORRECT_PASSWORD;
                 }
             }
-            
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
-        return loginStates.INCORRECT_PASSWORD;
-    }
 
-    public boolean accountExists(String studentId) {
-        for (Student sd : students) {
-            if (sd.getStudentId().equals(studentId)) {
-                return true;
-            }
-        }
-        return false;
+        return loginStates.INCORRECT_PASSWORD;
     }
 }

@@ -8,10 +8,9 @@ public class GUI {
     JPasswordField passwordField;
 
     public GUI() {
-        buildGui();
-
         accountManager = new AccountManager();
-        accountManager.loadAccounts();
+
+        buildGui();
     }
 
     private void buildGui() {
@@ -24,8 +23,11 @@ public class GUI {
         createComponents();
         
         try {
-            UIManager.setLookAndFeel(UIManager.getLookAndFeel());
-        } catch (UnsupportedLookAndFeelException e) {
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        } catch (ClassNotFoundException |
+         InstantiationException |
+         IllegalAccessException |
+         UnsupportedLookAndFeelException e) {
             e.printStackTrace();
         }
 
@@ -102,10 +104,14 @@ public class GUI {
 
             switch (result) {
                 case AccountManager.loginStates.INCORRECT_PASSWORD:
-                    message = "Credentials are incorrect.";
+                    message = "Incorrect password.";
+                    idField.setText("");
+                    passwordField.setText("");
                     break;
                 case AccountManager.loginStates.USER_DOESNT_EXIST:
                     message = "User does not exist.";
+                    idField.setText("");
+                    passwordField.setText("");
                     break;
                 case AccountManager.loginStates.SUCCESS:
                     message = "Login Success!";
@@ -133,7 +139,9 @@ public class GUI {
             if (result) {
                 message = "Registration successful."; 
             } else {
-                message = "Registration failed.";
+                message = "Registration failed: Account already exists.";
+                idField.setText("");
+                passwordField.setText("");
             }
 
             JOptionPane.showMessageDialog(null, message);
